@@ -1,6 +1,11 @@
 from pydantic import BaseModel
 from typing import Optional, List
-from .models import HorseStatus
+from datetime import datetime
+from .models import HorseStatus, PaddockState
+
+# ---------------------------------------------------------------------------
+# Horse Schemas
+# ---------------------------------------------------------------------------
 
 class HorseStatBase(BaseModel):
     stat_type: str
@@ -36,8 +41,27 @@ class Horse(HorseBase):
     class Config:
         from_attributes = True
 
-from datetime import datetime
-from .models import PaddockState
+# ---------------------------------------------------------------------------
+# Grass Analysis Schemas
+# ---------------------------------------------------------------------------
+
+class GrassAnalysisResult(BaseModel):
+    id: int
+    paddock_id: int
+    analyzed_at: datetime
+    image_url: Optional[str] = None
+    grass_coverage_pct: float
+    soil_exposure_detected: bool
+    dominant_color: str
+    weed_infestation_risk: str
+    allow_grazing: bool
+    groom_instruction: str
+    class Config:
+        from_attributes = True
+
+# ---------------------------------------------------------------------------
+# Paddock Schemas
+# ---------------------------------------------------------------------------
 
 class IncidentBase(BaseModel):
     issue_type: str
@@ -74,7 +98,9 @@ class PaddockBase(BaseModel):
 class Paddock(PaddockBase):
     id: int
     last_grazed_end_time: Optional[datetime] = None
+    last_scan_passed: Optional[bool] = None
     sessions: List[GrazingSession] = []
     incidents: List[Incident] = []
+    grass_analyses: List[GrassAnalysisResult] = []
     class Config:
         from_attributes = True

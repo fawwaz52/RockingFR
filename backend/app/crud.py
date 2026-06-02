@@ -1,11 +1,15 @@
+import os
+import json
+import base64
+import re
+from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 from . import models, schemas
 import time
-from datetime import datetime, timedelta
 
 GRAZING_WINDOW_HOURS = 2
 STANDARD_REST_DAYS = 25
-MAX_SAFE_SEASON_HOURS = 200.0  # hours before paddock needs major rest
+MAX_SAFE_SEASON_HOURS = 200.0
 
 # ---------------------------------------------------------------------------
 # Horse CRUD
@@ -28,31 +32,21 @@ def create_horse(db: Session, horse: schemas.HorseCreate):
     db.commit()
     db.refresh(db_horse)
 
-    current = models.HorseStat(
-        horse_id=db_horse.id,
-        **horse.current_stats.model_dump()
-    )
-    predicted = models.HorseStat(
-        horse_id=db_horse.id,
-        **horse.predicted_stats.model_dump()
-    )
+    current = models.HorseStat(horse_id=db_horse.id, **horse.current_stats.model_dump())
+    predicted = models.HorseStat(horse_id=db_horse.id, **horse.predicted_stats.model_dump())
     db.add(current)
     db.add(predicted)
     db.commit()
-
     return db_horse
 
 # ---------------------------------------------------------------------------
-# Paddock initialisation helpers
+# Paddock seed & getters
 # ---------------------------------------------------------------------------
 
 def seed_paddocks(db: Session):
-    """Create 6 default paddocks if none exist."""
-    count = db.query(models.Paddock).count()
-    if count == 0:
+    if db.query(models.Paddock).count() == 0:
         for i in range(1, 7):
-            p = models.Paddock(name=f"Paddock {i}")
-            db.add(p)
+            db.add(models.Paddock(name=f"Paddock {i}"))
         db.commit()
 
 def get_paddocks(db: Session):
@@ -62,16 +56,106 @@ def get_paddock(db: Session, paddock_id: int):
     return db.query(models.Paddock).filter(models.Paddock.id == paddock_id).first()
 
 # ---------------------------------------------------------------------------
-# Grazing Actions
+# AI Grass Analysis
+# ---------------------------------------------------------------------------
+
+GRASS_SYSTEM_PROMPT = """You are the Agricultural Intelligence Agent for a professional horse ranch in West Java, Indonesia.
+Your job is to analyze a single photo of a rotational grazing cell and determine if it is safe and suitable
+for 2 hours of trampling and grazing by 4 horses today.
+
+Evaluate:
+- Turf density and grass coverage percentage
+- Presence of bare soil or exposed roots
+- Signs of over-grazing or excessive wear
+- Weed or pest infestation risk
+- Ground moisture / mud that could injure hooves
+
+You MUST reply ONLY with a valid JSON object. No markdown, no explanation outside the JSON.
+Use this exact structure:
+{
+  "grass_coverage_pct": <0-100 float>,
+  "soil_exposure_detected": <true|false>,
+  "dominant_color": "<vibrant_green|pale_green|yellow|brown|muddy>",
+  "weed_infestation_risk": "<low|medium|high>",
+  "allow_grazing": <true|false>,
+  "groom_instruction": "<friendly 1-2 sentence instruction for the groom>"
+}
+
+Decision rule:
+- allow_grazing = true  if grass_coverage_pct >= 65 AND soil_exposure_detected = false AND weed_infestation_risk != "high"
+- allow_grazing = false otherwise; instruct groom to move to the next paddock."""
+
+def analyze_grass_image(image_bytes: bytes, mime_type: str, paddock_id: int, db: Session, image_url: str = None):
+    """Call Gemini Vision to analyze the grass image and save result to DB."""
+    import google.generativeai as genai
+
+    api_key = os.getenv("GEMINI_API_KEY", "")
+    if not api_key:
+        # Fallback mock for development when no key is set
+        result_data = _mock_analysis(paddock_id)
+    else:
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel("gemini-1.5-flash")
+
+        image_part = {"mime_type": mime_type, "data": image_bytes}
+        response = model.generate_content([GRASS_SYSTEM_PROMPT, image_part])
+
+        raw_text = response.text.strip()
+        # Strip potential markdown code fences
+        clean = re.sub(r"```json|```", "", raw_text).strip()
+        result_data = json.loads(clean)
+
+    # Persist to DB
+    analysis = models.GrassAnalysis(
+        paddock_id=paddock_id,
+        analyzed_at=datetime.utcnow(),
+        image_url=image_url,
+        grass_coverage_pct=result_data["grass_coverage_pct"],
+        soil_exposure_detected=result_data["soil_exposure_detected"],
+        dominant_color=result_data["dominant_color"],
+        weed_infestation_risk=result_data["weed_infestation_risk"],
+        allow_grazing=result_data["allow_grazing"],
+        groom_instruction=result_data["groom_instruction"],
+        raw_ai_response=json.dumps(result_data),
+    )
+    db.add(analysis)
+    db.flush()  # get ID before commit
+
+    # Update paddock scan state
+    paddock = get_paddock(db, paddock_id)
+    if paddock:
+        paddock.last_scan_passed = result_data["allow_grazing"]
+        paddock.last_scan_id = analysis.id
+        # If scan fails, reset any erroneously open grazing state
+        if not result_data["allow_grazing"] and paddock.current_state == models.PaddockState.grazing:
+            paddock.current_state = models.PaddockState.ready
+
+    db.commit()
+    db.refresh(analysis)
+    return analysis
+
+def _mock_analysis(paddock_id: int) -> dict:
+    """Returns a realistic mock when no GEMINI_API_KEY is configured."""
+    return {
+        "grass_coverage_pct": 88.0,
+        "soil_exposure_detected": False,
+        "dominant_color": "vibrant_green",
+        "weed_infestation_risk": "low",
+        "allow_grazing": True,
+        "groom_instruction": (
+            "[DEMO MODE — No API key set] Turf condition looks excellent. "
+            "You may release the horses for the 2-hour grazing window."
+        ),
+    }
+
+# ---------------------------------------------------------------------------
+# Grazing session actions
 # ---------------------------------------------------------------------------
 
 def release_horses(db: Session, paddock_id: int):
-    """Start a 2-hour grazing session."""
     paddock = get_paddock(db, paddock_id)
-    if not paddock:
-        return None
-    if paddock.current_state == models.PaddockState.grazing:
-        return paddock  # already grazing, do nothing
+    if not paddock or paddock.current_state == models.PaddockState.grazing:
+        return paddock
 
     now = datetime.utcnow()
     session = models.GrazingSession(
@@ -81,19 +165,17 @@ def release_horses(db: Session, paddock_id: int):
         status="active"
     )
     db.add(session)
-
     paddock.current_state = models.PaddockState.grazing
+    # Reset scan gate after release so next time groom must re-scan
+    paddock.last_scan_passed = None
     db.commit()
     db.refresh(paddock)
     return paddock
 
 def lock_gates(db: Session, paddock_id: int):
-    """End the active grazing session and return horses."""
     paddock = get_paddock(db, paddock_id)
-    if not paddock:
-        return None
-    if paddock.current_state == models.PaddockState.ready:
-        return paddock  # already locked
+    if not paddock or paddock.current_state == models.PaddockState.ready:
+        return paddock
 
     now = datetime.utcnow()
     active_session = (
@@ -105,13 +187,11 @@ def lock_gates(db: Session, paddock_id: int):
         .order_by(models.GrazingSession.start_time.desc())
         .first()
     )
-
     if active_session:
         active_session.actual_end_time = now
         active_session.status = "completed"
-        # Accumulate wear hours
-        hours_grazed = (now - active_session.start_time).total_seconds() / 3600
-        paddock.total_season_hours += hours_grazed
+        hours = (now - active_session.start_time).total_seconds() / 3600
+        paddock.total_season_hours += hours
         paddock.last_grazed_end_time = now
 
     paddock.current_state = models.PaddockState.ready
@@ -120,27 +200,26 @@ def lock_gates(db: Session, paddock_id: int):
     return paddock
 
 # ---------------------------------------------------------------------------
-# Incident Reporting
+# Incident reporting
 # ---------------------------------------------------------------------------
 
 def report_incident(db: Session, paddock_id: int, incident: schemas.IncidentCreate):
-    incident_obj = models.Incident(
+    obj = models.Incident(
         paddock_id=paddock_id,
         issue_type=incident.issue_type,
         reported_at=datetime.utcnow(),
         resolved=0
     )
-    db.add(incident_obj)
+    db.add(obj)
     db.commit()
-    db.refresh(incident_obj)
-    return incident_obj
+    db.refresh(obj)
+    return obj
 
 # ---------------------------------------------------------------------------
-# Season Toggle
+# Season toggle
 # ---------------------------------------------------------------------------
 
 def toggle_season(db: Session, paddock_id: int, fast_growth: bool):
-    """Switch between normal (1.0×) and monsoon fast-growth (0.8×) rest factor."""
     paddock = get_paddock(db, paddock_id)
     if not paddock:
         return None
@@ -150,35 +229,29 @@ def toggle_season(db: Session, paddock_id: int, fast_growth: bool):
     return paddock
 
 # ---------------------------------------------------------------------------
-# Computed helpers (used by API response enrichment)
+# Computed detail helpers
 # ---------------------------------------------------------------------------
 
 def compute_paddock_detail(paddock: models.Paddock):
-    """Return extra computed fields for the detail view."""
     wear_pct = min(100, (paddock.total_season_hours / MAX_SAFE_SEASON_HOURS) * 100)
-    
-    effective_rest_days = STANDARD_REST_DAYS * paddock.season_multiplier
-    days_since_last_graze = None
-    days_until_ready = None
+    effective_rest = STANDARD_REST_DAYS * paddock.season_multiplier
+    days_since = days_until = minutes_remaining = None
+
     if paddock.last_grazed_end_time:
         delta = datetime.utcnow() - paddock.last_grazed_end_time
-        days_since_last_graze = delta.total_seconds() / 86400
-        days_until_ready = max(0, effective_rest_days - days_since_last_graze)
+        days_since = delta.total_seconds() / 86400
+        days_until = max(0, effective_rest - days_since)
 
-    # Active session countdown
-    active_session = None
-    minutes_remaining = None
     for s in paddock.sessions:
         if s.status == "active":
-            active_session = s
             elapsed = (datetime.utcnow() - s.start_time).total_seconds() / 60
             minutes_remaining = max(0, GRAZING_WINDOW_HOURS * 60 - elapsed)
             break
 
     return {
         "wear_pct": round(wear_pct, 1),
-        "effective_rest_days": round(effective_rest_days, 1),
-        "days_since_last_graze": round(days_since_last_graze, 1) if days_since_last_graze is not None else None,
-        "days_until_ready": round(days_until_ready, 1) if days_until_ready is not None else None,
+        "effective_rest_days": round(effective_rest, 1),
+        "days_since_last_graze": round(days_since, 1) if days_since is not None else None,
+        "days_until_ready": round(days_until, 1) if days_until is not None else None,
         "minutes_remaining": round(minutes_remaining, 1) if minutes_remaining is not None else None,
     }

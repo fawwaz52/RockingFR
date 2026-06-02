@@ -106,6 +106,49 @@ function IncidentLog({ incidents }) {
   )
 }
 
+const RISK_COLORS = { low: '#a8e063', medium: '#f9ca24', high: '#ff4757' }
+const COLOR_DOT   = { vibrant_green:'#56ab2f', pale_green:'#a8e063', yellow:'#f9ca24', brown:'#b8860b', muddy:'#7f5539' }
+
+function GrassScanHistory({ analyses }) {
+  if (!analyses || analyses.length === 0) {
+    return (
+      <div className="pd-scan-empty">
+        <span style={{ fontSize: 28 }}>📷</span>
+        <span>No AI grass scans yet. The groom performs scans from the mobile view before each session.</span>
+      </div>
+    )
+  }
+  const sorted = [...analyses].sort((a, b) => new Date(b.analyzed_at) - new Date(a.analyzed_at))
+  return (
+    <div className="pd-scan-list">
+      {sorted.map(s => (
+        <div key={s.id} className={`pd-scan-row ${s.allow_grazing ? 'pass' : 'fail'}`}>
+          <div className="pd-scan-row-verdict">
+            {s.allow_grazing ? '✅' : '🔴'}
+          </div>
+          <div className="pd-scan-row-body">
+            <div className="pd-scan-row-top">
+              <span className="pd-scan-row-date">{new Date(s.analyzed_at).toLocaleString()}</span>
+              <span className="pd-scan-row-coverage">{s.grass_coverage_pct}% cover</span>
+              <span style={{ color: RISK_COLORS[s.weed_infestation_risk], fontSize: 11, fontWeight: 700 }}>
+                Weed: {s.weed_infestation_risk}
+              </span>
+              <span style={{ display:'flex', alignItems:'center', gap:4, fontSize:11 }}>
+                <span style={{ width:8, height:8, borderRadius:'50%', background: COLOR_DOT[s.dominant_color] || '#888', display:'inline-block' }}/>
+                {s.dominant_color?.replace('_', ' ')}
+              </span>
+            </div>
+            <div className="pd-scan-row-instruction">{s.groom_instruction}</div>
+          </div>
+          {s.image_url && (
+            <img src={s.image_url} alt="scan" className="pd-scan-row-thumb" />
+          )}
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export default function Paddocks() {
   const [paddocks, setPaddocks] = useState([])
   const [selectedId, setSelectedId] = useState(null)
@@ -227,9 +270,16 @@ export default function Paddocks() {
                 </div>
                 <div className="pd-action-btns">
                   {!isGrazing ? (
-                    <button className="btn-primary" onClick={handleRelease} disabled={actionLoading}>
-                      🔓 Release Horses
-                    </button>
+                    <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-end', gap:6 }}>
+                      <button className="btn-primary" onClick={handleRelease} disabled={actionLoading}>
+                        🔓 Release Horses
+                      </button>
+                      <span style={{ fontSize:11, color: detail.last_scan_passed === true ? '#a8e063' : '#f9ca24', fontWeight:600 }}>
+                        {detail.last_scan_passed === true ? '✅ AI scan passed — safe to release' :
+                         detail.last_scan_passed === false ? '🔴 AI scan failed — groom must re-scan' :
+                         '📷 No scan yet — groom must scan via mobile'}
+                      </span>
+                    </div>
                   ) : (
                     <button className="btn-danger" onClick={handleLock} disabled={actionLoading}>
                       🔒 Lock Gates
@@ -303,6 +353,15 @@ export default function Paddocks() {
               <div className="pd-section">
                 <div className="pd-section-title">Session Ledger</div>
                 <SessionLedger sessions={detail.sessions} />
+              </div>
+
+              {/* AI Grass Scan History */}
+              <div className="pd-section">
+                <div className="pd-section-title">🤖 AI Grass Scan History</div>
+                <p className="pd-section-hint">
+                  Every scan the groom performs on the mobile app is logged here with the AI's full analysis.
+                </p>
+                <GrassScanHistory analyses={detail.grass_analyses} />
               </div>
 
               {/* Incident Log */}

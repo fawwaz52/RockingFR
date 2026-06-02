@@ -1,7 +1,6 @@
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, File
 from fastapi.staticfiles import StaticFiles
-import os
-import shutil
+import os, shutil
 from sqlalchemy.orm import Session
 from typing import List
 from . import crud, models, schemas
@@ -23,7 +22,6 @@ app.add_middleware(
 os.makedirs("uploads", exist_ok=True)
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
-# Seed paddocks on startup
 @app.on_event("startup")
 def on_startup():
     from .database import SessionLocal
@@ -34,16 +32,18 @@ def on_startup():
         db.close()
 
 # ---------------------------------------------------------------------------
-# Horse Routes
+# Image upload
 # ---------------------------------------------------------------------------
-
 @app.post("/api/upload/")
 def upload_image(file: UploadFile = File(...)):
     file_location = f"uploads/{file.filename}"
-    with open(file_location, "wb+") as file_object:
-        shutil.copyfileobj(file.file, file_object)
+    with open(file_location, "wb+") as f:
+        shutil.copyfileobj(file.file, f)
     return {"url": f"http://localhost:8000/{file_location}"}
 
+# ---------------------------------------------------------------------------
+# Horse routes
+# ---------------------------------------------------------------------------
 @app.get("/api/horses/", response_model=List[schemas.Horse])
 def read_horses(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     return crud.get_horses(db, skip=skip, limit=limit)
@@ -56,8 +56,13 @@ def create_horse(horse: schemas.HorseCreate, db: Session = Depends(get_db)):
     return crud.create_horse(db=db, horse=horse)
 
 # ---------------------------------------------------------------------------
-# Paddock Routes
+# Paddock routes
 # ---------------------------------------------------------------------------
+def _paddock_response(paddock, db):
+    detail = crud.compute_paddock_detail(paddock)
+    result = schemas.Paddock.model_validate(paddock).model_dump()
+    result.update(detail)
+    return result
 
 @app.get("/api/paddocks/", response_model=List[schemas.Paddock])
 def read_paddocks(db: Session = Depends(get_db)):
@@ -68,31 +73,28 @@ def read_paddock(paddock_id: int, db: Session = Depends(get_db)):
     paddock = crud.get_paddock(db, paddock_id)
     if not paddock:
         raise HTTPException(status_code=404, detail="Paddock not found")
-    detail = crud.compute_paddock_detail(paddock)
-    # Build full response dict
-    result = schemas.Paddock.model_validate(paddock).model_dump()
-    result.update(detail)
-    return result
+    return _paddock_response(paddock, db)
 
 @app.post("/api/paddocks/{paddock_id}/release")
 def release_horses(paddock_id: int, db: Session = Depends(get_db)):
-    paddock = crud.release_horses(db, paddock_id)
+    # Enforce scan gate — must have a passing scan before releasing
+    paddock = crud.get_paddock(db, paddock_id)
     if not paddock:
         raise HTTPException(status_code=404, detail="Paddock not found")
-    detail = crud.compute_paddock_detail(paddock)
-    result = schemas.Paddock.model_validate(paddock).model_dump()
-    result.update(detail)
-    return result
+    if paddock.last_scan_passed is not True:
+        raise HTTPException(
+            status_code=403,
+            detail="Scan required: Please scan the grass first. The AI must approve before releasing horses."
+        )
+    paddock = crud.release_horses(db, paddock_id)
+    return _paddock_response(paddock, db)
 
 @app.post("/api/paddocks/{paddock_id}/lock")
 def lock_gates(paddock_id: int, db: Session = Depends(get_db)):
     paddock = crud.lock_gates(db, paddock_id)
     if not paddock:
         raise HTTPException(status_code=404, detail="Paddock not found")
-    detail = crud.compute_paddock_detail(paddock)
-    result = schemas.Paddock.model_validate(paddock).model_dump()
-    result.update(detail)
-    return result
+    return _paddock_response(paddock, db)
 
 @app.post("/api/paddocks/{paddock_id}/incident", response_model=schemas.Incident)
 def report_incident(paddock_id: int, incident: schemas.IncidentCreate, db: Session = Depends(get_db)):
@@ -106,7 +108,34 @@ def toggle_season(paddock_id: int, fast_growth: bool = False, db: Session = Depe
     paddock = crud.toggle_season(db, paddock_id, fast_growth)
     if not paddock:
         raise HTTPException(status_code=404, detail="Paddock not found")
-    detail = crud.compute_paddock_detail(paddock)
-    result = schemas.Paddock.model_validate(paddock).model_dump()
-    result.update(detail)
-    return result
+    return _paddock_response(paddock, db)
+
+# ---------------------------------------------------------------------------
+# AI Grass Analysis route
+# ---------------------------------------------------------------------------
+@app.post("/api/paddocks/{paddock_id}/analyze", response_model=schemas.GrassAnalysisResult)
+async def analyze_grass(paddock_id: int, file: UploadFile = File(...), db: Session = Depends(get_db)):
+    paddock = crud.get_paddock(db, paddock_id)
+    if not paddock:
+        raise HTTPException(status_code=404, detail="Paddock not found")
+
+    # Save image
+    safe_name = f"grass_{paddock_id}_{int(__import__('time').time())}{os.path.splitext(file.filename)[1]}"
+    file_path = f"uploads/{safe_name}"
+    image_bytes = await file.read()
+    with open(file_path, "wb") as f:
+        f.write(image_bytes)
+    image_url = f"http://localhost:8000/{file_path}"
+
+    try:
+        analysis = crud.analyze_grass_image(
+            image_bytes=image_bytes,
+            mime_type=file.content_type or "image/jpeg",
+            paddock_id=paddock_id,
+            db=db,
+            image_url=image_url
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"AI analysis failed: {str(e)}")
+
+    return analysis
