@@ -39,6 +39,35 @@ def create_horse(db: Session, horse: schemas.HorseCreate):
     db.commit()
     return db_horse
 
+def create_training_log(db: Session, horse_id: str, log: schemas.TrainingLogCreate):
+    db_log = models.TrainingLog(
+        horse_id=horse_id,
+        reported_at=datetime.utcnow(),
+        notes=log.notes,
+        sanity=log.sanity,
+        balance=log.balance,
+        responsiveness=log.responsiveness,
+        stamina=log.stamina
+    )
+    db.add(db_log)
+    
+    # Optionally update the current stats if provided
+    if any(v is not None for v in [log.sanity, log.balance, log.responsiveness, log.stamina]):
+        current_stat = db.query(models.HorseStat).filter(
+            models.HorseStat.horse_id == horse_id,
+            models.HorseStat.stat_type == "current"
+        ).first()
+        
+        if current_stat:
+            if log.sanity is not None: current_stat.sanity = log.sanity
+            if log.balance is not None: current_stat.balance = log.balance
+            if log.responsiveness is not None: current_stat.responsiveness = log.responsiveness
+            if log.stamina is not None: current_stat.stamina = log.stamina
+
+    db.commit()
+    db.refresh(db_log)
+    return db_log
+
 # ---------------------------------------------------------------------------
 # Paddock seed & getters
 # ---------------------------------------------------------------------------

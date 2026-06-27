@@ -23,6 +23,23 @@ class HorseStat(HorseStatBase):
     class Config:
         from_attributes = True
 
+class TrainingLogBase(BaseModel):
+    notes: Optional[str] = None
+    sanity: Optional[int] = None
+    balance: Optional[int] = None
+    responsiveness: Optional[int] = None
+    stamina: Optional[int] = None
+
+class TrainingLogCreate(TrainingLogBase):
+    pass
+
+class TrainingLog(TrainingLogBase):
+    id: int
+    horse_id: str
+    reported_at: datetime
+    class Config:
+        from_attributes = True
+
 class HorseBase(BaseModel):
     registered_name: str
     stable_name: Optional[str] = None
@@ -38,6 +55,7 @@ class HorseCreate(HorseBase):
 class Horse(HorseBase):
     id: str
     stats: List[HorseStat] = []
+    training_logs: List[TrainingLog] = []
     class Config:
         from_attributes = True
 

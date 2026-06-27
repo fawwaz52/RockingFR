@@ -720,3 +720,89 @@ html { scroll-behavior: smooth; }
   border-radius: 8px; flex-shrink: 0;
   border: 1px solid rgba(255,255,255,0.1);
 }
+
+/* =========================================================
+   GROOM MOBILE TABS & TRAINING FORM
+   ========================================================= */
+
+.gm-tabs {
+  display: flex; gap: 8px; padding: 0 16px 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  margin-bottom: 12px;
+}
+.gm-tab {
+  flex: 1; padding: 12px; background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08); border-radius: 12px;
+  color: rgba(232,228,217,0.5); font-size: 14px; font-weight: 700;
+  cursor: pointer; transition: all 0.2s; font-family: 'Manrope', sans-serif;
+}
+.gm-tab.active {
+  background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.2);
+  color: #e8e4d9;
+}
+
+.gm-training-form-container {
+  padding: 16px; background: rgba(255,255,255,0.02);
+  border-radius: 16px; margin: 16px; border: 1px solid rgba(255,255,255,0.05);
+}
+.gm-training-title {
+  font-size: 18px; font-weight: 800; color: #e8e4d9; margin-bottom: 8px; text-align: center;
+}
+.gm-training-form { display: flex; flex-direction: column; gap: 16px; }
+
+.gm-form-group { display: flex; flex-direction: column; gap: 6px; }
+.gm-form-group label {
+  font-size: 12px; font-weight: 700; color: rgba(232,228,217,0.6); text-transform: uppercase;
+}
+.gm-form-group textarea {
+  background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 8px; padding: 12px; color: #e8e4d9; font-family: inherit;
+  font-size: 14px; min-height: 80px; resize: vertical;
+}
+.gm-form-group input[type="range"] {
+  width: 100%; accent-color: #a8e063;
+}
+
+/* =========================================================
+   HORSE DETAILS VIEW
+   ========================================================= */
+.horses-detail-view {
+  display: flex; flex-direction: column; gap: 24px;
+}
+.horses-detail-sections {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 24px;
+}
+.horses-detail-section {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  padding: 24px;
+}
+.horses-detail-section h3 {
+  font-size: 16px; font-weight: 700; margin-bottom: 16px;
+  color: var(--color-text-primary);
+}
+.horses-detail-text {
+  font-size: 14px; color: var(--color-text-secondary); line-height: 1.6;
+}
+.horses-training-logs {
+  display: flex; flex-direction: column; gap: 16px;
+  max-height: 400px; overflow-y: auto; padding-right: 8px;
+}
+.horses-training-log-card {
+  background: rgba(255,255,255,0.02); border: 1px solid var(--color-border-tertiary);
+  border-radius: 10px; padding: 16px; display: flex; flex-direction: column; gap: 8px;
+}
+.log-date {
+  font-size: 11px; font-weight: 600; color: var(--color-text-tertiary); text-transform: uppercase;
+}
+.log-notes {
+  font-size: 14px; color: var(--color-text-primary); line-height: 1.5;
+}
+.log-stats-updates {
+  display: flex; gap: 12px; flex-wrap: wrap; margin-top: 4px;
+}
+.log-stats-updates span {
+  font-size: 11px; background: rgba(168,224,99,0.1); color: #a8e063;
+  padding: 4px 8px; border-radius: 4px; font-weight: 700;
+}

@@ -55,6 +55,13 @@ def create_horse(horse: schemas.HorseCreate, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="Microchip already registered")
     return crud.create_horse(db=db, horse=horse)
 
+@app.post("/api/horses/{horse_id}/training_logs", response_model=schemas.TrainingLog)
+def create_training_log(horse_id: str, log: schemas.TrainingLogCreate, db: Session = Depends(get_db)):
+    horse = db.query(models.Horse).filter(models.Horse.id == horse_id).first()
+    if not horse:
+        raise HTTPException(status_code=404, detail="Horse not found")
+    return crud.create_training_log(db=db, horse_id=horse_id, log=log)
+
 # ---------------------------------------------------------------------------
 # Paddock routes
 # ---------------------------------------------------------------------------

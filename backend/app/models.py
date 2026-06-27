@@ -22,6 +22,7 @@ class Horse(Base):
     predictive_analysis_text = Column(String, nullable=True)
 
     stats = relationship("HorseStat", back_populates="horse")
+    training_logs = relationship("TrainingLog", back_populates="horse", foreign_keys="TrainingLog.horse_id")
 
 class HorseStat(Base):
     __tablename__ = "horse_stats"
@@ -35,6 +36,22 @@ class HorseStat(Base):
     stamina = Column(Integer)
 
     horse = relationship("Horse", back_populates="stats")
+
+class TrainingLog(Base):
+    __tablename__ = "training_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    horse_id = Column(String, ForeignKey("horses.id"))
+    reported_at = Column(DateTime)
+    notes = Column(Text, nullable=True)
+    
+    # Optional stat updates logged at this training session
+    sanity = Column(Integer, nullable=True)
+    balance = Column(Integer, nullable=True)
+    responsiveness = Column(Integer, nullable=True)
+    stamina = Column(Integer, nullable=True)
+
+    horse = relationship("Horse", back_populates="training_logs")
 
 class PaddockState(str, enum.Enum):
     ready = "ready"

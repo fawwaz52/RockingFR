@@ -27,11 +27,9 @@ export default function Dashboard() {
     <>
       <div className="topbar">
         <div>
-          <div className="topbar-title">Founder dashboard</div>
-          <div className="topbar-meta">{active.length} horses · 3 paddocks · Last sync just now</div>
-        </div>
+          <div className="topbar-title">Founder Dashboard</div>
+          </div>
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-          <span className="badge badge-gray">Rp 0 / mo</span>
         </div>
       </div>
 
