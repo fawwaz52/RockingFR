@@ -146,3 +146,18 @@ async def analyze_grass(paddock_id: int, file: UploadFile = File(...), db: Sessi
         raise HTTPException(status_code=500, detail=f"AI analysis failed: {str(e)}")
 
     return analysis
+
+# ---------------------------------------------------------------------------
+# Financial / Expense routes
+# ---------------------------------------------------------------------------
+@app.get("/api/financials/summary", response_model=schemas.FinancialSummary)
+def get_financial_summary(db: Session = Depends(get_db)):
+    return crud.get_financial_summary(db)
+
+@app.get("/api/financials/expenses", response_model=List[schemas.Expense])
+def get_expenses(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+    return crud.get_expenses(db, skip=skip, limit=limit)
+
+@app.post("/api/financials/expenses", response_model=schemas.Expense)
+def create_expense(expense: schemas.ExpenseCreate, db: Session = Depends(get_db)):
+    return crud.create_expense(db=db, expense=expense)

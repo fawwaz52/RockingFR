@@ -26,7 +26,9 @@ def create_horse(db: Session, horse: schemas.HorseCreate):
         microchip_id=horse.microchip_id,
         status=horse.status,
         image_url=horse.image_url,
-        predictive_analysis_text=horse.predictive_analysis_text
+        predictive_analysis_text=horse.predictive_analysis_text,
+        purchase_price=horse.purchase_price or 0.0,
+        estimated_value=horse.estimated_value or 0.0,
     )
     db.add(db_horse)
     db.commit()
@@ -284,3 +286,62 @@ def compute_paddock_detail(paddock: models.Paddock):
         "days_until_ready": round(days_until, 1) if days_until is not None else None,
         "minutes_remaining": round(minutes_remaining, 1) if minutes_remaining is not None else None,
     }
+
+# ---------------------------------------------------------------------------
+# Expense CRUD
+# ---------------------------------------------------------------------------
+
+def create_expense(db: Session, expense: schemas.ExpenseCreate):
+    db_expense = models.Expense(
+        date=datetime.utcnow(),
+        category=expense.category,
+        amount=expense.amount,
+        description=expense.description,
+    )
+    db.add(db_expense)
+    db.commit()
+    db.refresh(db_expense)
+    return db_expense
+
+def get_expenses(db: Session, skip: int = 0, limit: int = 100):
+    return db.query(models.Expense).order_by(models.Expense.date.desc()).offset(skip).limit(limit).all()
+
+def get_financial_summary(db: Session):
+    from calendar import monthrange
+    now = datetime.utcnow()
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+    # Monthly burn = all expenses in current month
+    monthly_expenses = db.query(models.Expense).filter(
+        models.Expense.date >= month_start
+    ).all()
+    monthly_burn = sum(e.amount for e in monthly_expenses)
+
+    # All expenses for all-time cost
+    all_expenses = db.query(models.Expense).all()
+    total_expenses = sum(e.amount for e in all_expenses)
+
+    # Expense breakdown by category
+    breakdown = {}
+    for e in all_expenses:
+        cat = e.category.value if hasattr(e.category, 'value') else str(e.category)
+        breakdown[cat] = breakdown.get(cat, 0.0) + e.amount
+
+    # Active horses (not sold)
+    active_horses = db.query(models.Horse).filter(models.Horse.status != 'sold').all()
+    horses_for_sale = [h for h in active_horses if h.status == 'for_sale']
+
+    total_estimated_value = sum((h.estimated_value or 0.0) for h in active_horses)
+    total_purchase_cost = sum((h.purchase_price or 0.0) for h in active_horses)
+
+    # Net profit = total estimated value - total purchase cost - all time expenses
+    net_profit = total_estimated_value - total_purchase_cost - total_expenses
+
+    return schemas.FinancialSummary(
+        monthly_burn=round(monthly_burn, 2),
+        total_estimated_value=round(total_estimated_value, 2),
+        total_purchase_cost=round(total_purchase_cost, 2),
+        net_profit=round(net_profit, 2),
+        horses_for_sale=len(horses_for_sale),
+        expense_breakdown=breakdown,
+    )

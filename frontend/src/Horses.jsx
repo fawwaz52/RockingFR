@@ -44,10 +44,23 @@ export default function Horses() {
   return (
     <div className="horses-theme">
       <header className="horses-topbar">
-        <div className="brand">
-          <span className="brand-name">Stable OS</span>
-          <span className="brand-tag">HORSE ASSETS</span>
-        </div>
+        {selectedHorse ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+            <button className="horses-back-btn" onClick={() => setSelectedHorse(null)}>
+              ← Back
+            </button>
+            <div className="horses-topbar-breadcrumb">
+              <span className="horses-breadcrumb-parent" onClick={() => setSelectedHorse(null)}>Horse Assets</span>
+              <span className="horses-breadcrumb-sep">›</span>
+              <span className="horses-breadcrumb-current">{selectedHorse.registered_name}</span>
+            </div>
+          </div>
+        ) : (
+          <div className="brand">
+            <span className="brand-name">Stable OS</span>
+            <span className="brand-tag">HORSE ASSETS</span>
+          </div>
+        )}
         <button className="btn-primary" onClick={() => setIsModalOpen(true)}>
           <span className="icon">+</span> Add New Horse
         </button>
@@ -79,10 +92,7 @@ export default function Horses() {
           <div>Loading assets...</div>
         ) : selectedHorse ? (
           <div className="horses-detail-view">
-            <button className="btn-secondary" style={{marginBottom: 16}} onClick={() => setSelectedHorse(null)}>
-              ← Back to Inventory
-            </button>
-            
+
             <div className="horses-horse-card" style={{ cursor: 'default' }}>
               <div className="horses-card-top">
                 <div className="horses-card-left">

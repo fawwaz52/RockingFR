@@ -20,6 +20,8 @@ class Horse(Base):
     status = Column(Enum(HorseStatus), default=HorseStatus.letting_down)
     image_url = Column(String, nullable=True)
     predictive_analysis_text = Column(String, nullable=True)
+    purchase_price = Column(Float, nullable=True, default=0.0)
+    estimated_value = Column(Float, nullable=True, default=0.0)
 
     stats = relationship("HorseStat", back_populates="horse")
     training_logs = relationship("TrainingLog", back_populates="horse", foreign_keys="TrainingLog.horse_id")
@@ -120,3 +122,20 @@ class GrassAnalysis(Base):
 
     paddock = relationship("Paddock", back_populates="grass_analyses",
                            foreign_keys=[paddock_id])
+
+class ExpenseCategory(str, enum.Enum):
+    feed = "Feed"
+    labor = "Labor"
+    maintenance = "Maintenance"
+    veterinary = "Veterinary"
+    transport = "Transport"
+    other = "Other"
+
+class Expense(Base):
+    __tablename__ = "expenses"
+
+    id = Column(Integer, primary_key=True, index=True)
+    date = Column(DateTime)
+    category = Column(Enum(ExpenseCategory), default=ExpenseCategory.other)
+    amount = Column(Float, nullable=False)
+    description = Column(Text, nullable=True)

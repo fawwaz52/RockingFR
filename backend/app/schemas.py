@@ -1,7 +1,7 @@
 from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime
-from .models import HorseStatus, PaddockState
+from .models import HorseStatus, PaddockState, ExpenseCategory
 
 # ---------------------------------------------------------------------------
 # Horse Schemas
@@ -47,6 +47,8 @@ class HorseBase(BaseModel):
     status: HorseStatus
     image_url: Optional[str] = None
     predictive_analysis_text: Optional[str] = None
+    purchase_price: Optional[float] = 0.0
+    estimated_value: Optional[float] = 0.0
 
 class HorseCreate(HorseBase):
     current_stats: HorseStatCreate
@@ -122,3 +124,29 @@ class Paddock(PaddockBase):
     grass_analyses: List[GrassAnalysisResult] = []
     class Config:
         from_attributes = True
+
+# ---------------------------------------------------------------------------
+# Financial / Expense Schemas
+# ---------------------------------------------------------------------------
+
+class ExpenseBase(BaseModel):
+    category: ExpenseCategory
+    amount: float
+    description: Optional[str] = None
+
+class ExpenseCreate(ExpenseBase):
+    pass
+
+class Expense(ExpenseBase):
+    id: int
+    date: datetime
+    class Config:
+        from_attributes = True
+
+class FinancialSummary(BaseModel):
+    monthly_burn: float          # sum of expenses in the current calendar month
+    total_estimated_value: float # sum of estimated_value for all active horses
+    total_purchase_cost: float   # sum of purchase_price for all active horses
+    net_profit: float            # total_estimated_value - total_purchase_cost - all time expenses
+    horses_for_sale: int
+    expense_breakdown: dict      # category -> total
