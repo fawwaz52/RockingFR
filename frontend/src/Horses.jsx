@@ -57,7 +57,7 @@ export default function Horses() {
           </div>
         ) : (
           <div className="brand">
-            <span className="brand-name">Stable OS</span>
+            <span className="brand-name">StableCentral</span>
             <span className="brand-tag">HORSE ASSETS</span>
           </div>
         )}

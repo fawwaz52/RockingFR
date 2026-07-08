@@ -476,7 +476,7 @@ export default function GroomMobile() {
 
       {/* Header */}
       <div className="gm-header">
-        <span className="gm-brand">🐎 StableOS</span>
+        <span className="gm-brand">🐎 StableCentral</span>
         <span className="gm-role-badge">GROOM</span>
       </div>
 
